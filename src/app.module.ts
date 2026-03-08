@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { NotificationTemplate } from './database/entities/notification-template.entity';
 import { Notification } from './database/entities/notification.entity';
 import { User } from './database/entities/user.entity';
+import { HealthModule } from './health/health.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { TemplatesModule } from './templates/templates.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
@@ -25,6 +26,10 @@ import { WebhooksModule } from './webhooks/webhooks.module';
         entities: [User, Notification, NotificationTemplate],
         synchronize: config.get('NODE_ENV') !== 'production',
         logging: config.get('NODE_ENV') === 'development',
+        ssl:
+          config.get('DB_SSL') === 'true'
+            ? { rejectUnauthorized: config.get('DB_SSL_REJECT_UNAUTHORIZED') !== 'false' }
+            : false,
       }),
     }),
 
@@ -34,6 +39,8 @@ import { WebhooksModule } from './webhooks/webhooks.module';
         connection: {
           host: config.get('REDIS_HOST', 'localhost'),
           port: config.get<number>('REDIS_PORT', 6379),
+          password: config.get<string>('REDIS_PASSWORD') || undefined,
+          tls: config.get('REDIS_TLS') === 'true' ? {} : undefined,
         },
         defaultJobOptions: {
           attempts: 3,
@@ -42,6 +49,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
       }),
     }),
 
+    HealthModule,
     NotificationsModule,
     TemplatesModule,
     WebhooksModule,

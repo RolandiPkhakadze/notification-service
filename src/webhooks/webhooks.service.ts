@@ -28,7 +28,14 @@ export class WebhooksService {
 
   verifySignature(payload: Buffer, signature: string, timestamp: string): void {
     const secret = this.config.get<string>('SENDGRID_WEBHOOK_SECRET');
-    if (!secret) return; // skip in dev if not configured
+    if (!secret) {
+      if (this.config.get('NODE_ENV') === 'production') {
+        throw new UnauthorizedException(
+          'Webhook signature verification not configured',
+        );
+      }
+      return; // skip in dev if not configured
+    }
 
     const timestampedPayload = timestamp + payload.toString();
     const expected = crypto

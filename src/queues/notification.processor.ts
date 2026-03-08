@@ -6,17 +6,8 @@ import { Repository } from 'typeorm';
 import { EmailService } from '../channels/email/email.service';
 import { PushService } from '../channels/push/push.service';
 import { SmsService } from '../channels/sms/sms.service';
-import {
-  Notification,
-  NotificationStatus,
-} from '../database/entities/notification.entity';
-import {
-  EmailJobPayload,
-  NOTIFICATION_QUEUE,
-  PushJobPayload,
-  QUEUE_JOBS,
-  SmsJobPayload,
-} from './notification.queue';
+import { Notification, NotificationStatus } from '../database/entities/notification.entity';
+import { EmailJobPayload, NOTIFICATION_QUEUE, PushJobPayload, QUEUE_JOBS, SmsJobPayload } from './notification.queue';
 
 @Processor(NOTIFICATION_QUEUE, {
   concurrency: 5,
@@ -102,11 +93,7 @@ export class NotificationProcessor extends WorkerHost {
     }
   }
 
-  private async markSent(
-    notificationId: string,
-    providerMessageId: string,
-    provider: string,
-  ): Promise<void> {
+  private async markSent(notificationId: string, providerMessageId: string, provider: string): Promise<void> {
     await this.notificationRepo.update(notificationId, {
       status: NotificationStatus.SENT,
       providerMessageId,
@@ -115,10 +102,7 @@ export class NotificationProcessor extends WorkerHost {
     this.logger.log(`Notification ${notificationId} marked as sent`);
   }
 
-  private async markFailed(
-    notificationId: string,
-    err: unknown,
-  ): Promise<void> {
+  private async markFailed(notificationId: string, err: unknown): Promise<void> {
     const errorMessage = err instanceof Error ? err.message : String(err);
     await this.notificationRepo.update(notificationId, {
       status: NotificationStatus.FAILED,

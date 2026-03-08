@@ -1,0 +1,14 @@
+node_modules
+dist
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+.DS_Store
+*.md
+docker-compose.yml
+coverage
+.idea
+.vscode
+test
