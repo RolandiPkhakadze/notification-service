@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { BulkSendDto } from './dto/bulk-send.dto';
 import { SendEmailTemplateDto } from './dto/send-email-template.dto';
@@ -44,19 +44,19 @@ export class NotificationsController {
 
   @Get('bulk/:bulkId/status')
   @ApiOperation({ summary: 'Get bulk send status' })
-  getBulkStatus(@Param('bulkId') bulkId: string) {
+  getBulkStatus(@Param('bulkId', ParseUUIDPipe) bulkId: string) {
     return this.notificationsService.getBulkStatus(bulkId);
   }
 
   @Get('user/:userId')
   @ApiOperation({ summary: "Get user's notification history" })
-  findByUser(@Param('userId') userId: string) {
+  findByUser(@Param('userId', ParseUUIDPipe) userId: string) {
     return this.notificationsService.findByUser(userId);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get notification status by ID' })
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.notificationsService.findById(id);
   }
 }

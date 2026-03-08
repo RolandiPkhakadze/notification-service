@@ -1,15 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator';
+import { IsNotEmpty, IsObject, IsOptional, IsString, IsUUID, ValidateIf } from 'class-validator';
 
 export class SendPushDto {
   @ApiPropertyOptional({ example: 'device_fcm_token_here' })
-  @IsOptional()
+  @ValidateIf((o) => !o.topic)
   @IsString()
+  @IsNotEmpty({ message: 'Either token or topic is required' })
   token?: string;
 
   @ApiPropertyOptional({ example: 'all-users' })
-  @IsOptional()
+  @ValidateIf((o) => !o.token)
   @IsString()
+  @IsNotEmpty({ message: 'Either token or topic is required' })
   topic?: string;
 
   @ApiProperty({ example: 'New message' })
@@ -29,6 +31,6 @@ export class SendPushDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsString()
+  @IsUUID()
   userId?: string;
 }

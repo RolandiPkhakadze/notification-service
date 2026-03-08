@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CreateTemplateDto } from './dto/create-template.dto';
 import { TemplatesService } from './templates.service';
@@ -22,7 +22,7 @@ export class TemplatesController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get template by ID' })
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.templatesService.findOne(id);
   }
 }

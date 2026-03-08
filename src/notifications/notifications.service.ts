@@ -1,7 +1,5 @@
-import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Queue } from 'bullmq';
 import { randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
 import { TemplatesService } from '../templates/templates.service';
@@ -11,19 +9,12 @@ import {
   NotificationStatus,
 } from '../database/entities/notification.entity';
 import { User } from '../database/entities/user.entity';
-import { NOTIFICATION_QUEUE, QUEUE_JOBS } from '../queues/notification.queue';
+import { NotificationSender } from './notification-sender.service';
 import { BulkSendDto } from './dto/bulk-send.dto';
 import { SendEmailTemplateDto } from './dto/send-email-template.dto';
 import { SendEmailDto } from './dto/send-email.dto';
 import { SendPushDto } from './dto/send-push.dto';
 import { SendSmsDto } from './dto/send-sms.dto';
-
-const JOB_OPTIONS = {
-  attempts: 3,
-  backoff: { type: 'exponential', delay: 1000 },
-  removeOnComplete: { count: 100 },
-  removeOnFail: { count: 200 },
-};
 
 @Injectable()
 export class NotificationsService {
@@ -34,8 +25,7 @@ export class NotificationsService {
     private readonly notificationRepo: Repository<Notification>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
-    @InjectQueue(NOTIFICATION_QUEUE)
-    private readonly queue: Queue,
+    private readonly sender: NotificationSender,
     private readonly templatesService: TemplatesService,
   ) {}
 
@@ -45,20 +35,15 @@ export class NotificationsService {
       dto.userId,
     );
 
-    await this.queue.add(
-      QUEUE_JOBS.SEND_EMAIL,
-      {
-        notificationId: notification.id,
-        to: dto.to,
-        subject: dto.subject,
-        text: dto.text,
-        html: dto.html,
-      },
-      JOB_OPTIONS,
-    );
+    this.sender.sendEmail(notification.id, {
+      to: dto.to,
+      subject: dto.subject,
+      text: dto.text,
+      html: dto.html,
+    });
 
     this.logger.log(
-      `Email job queued for ${dto.to}, notificationId=${notification.id}`,
+      `Email queued for ${dto.to}, notificationId=${notification.id}`,
     );
     return { notificationId: notification.id, status: notification.status };
   }
@@ -87,14 +72,10 @@ export class NotificationsService {
       dto.userId,
     );
 
-    await this.queue.add(
-      QUEUE_JOBS.SEND_SMS,
-      { notificationId: notification.id, to: dto.to, body: dto.body },
-      JOB_OPTIONS,
-    );
+    this.sender.sendSms(notification.id, { to: dto.to, body: dto.body });
 
     this.logger.log(
-      `SMS job queued for ${dto.to}, notificationId=${notification.id}`,
+      `SMS queued for ${dto.to}, notificationId=${notification.id}`,
     );
     return { notificationId: notification.id, status: notification.status };
   }
@@ -105,26 +86,20 @@ export class NotificationsService {
       dto.userId,
     );
 
-    await this.queue.add(
-      QUEUE_JOBS.SEND_PUSH,
-      {
-        notificationId: notification.id,
-        token: dto.token,
-        topic: dto.topic,
-        title: dto.title,
-        body: dto.body,
-        data: dto.data,
-      },
-      JOB_OPTIONS,
-    );
+    this.sender.sendPush(notification.id, {
+      token: dto.token,
+      topic: dto.topic,
+      title: dto.title,
+      body: dto.body,
+      data: dto.data,
+    });
 
-    this.logger.log(`Push job queued, notificationId=${notification.id}`);
+    this.logger.log(`Push queued, notificationId=${notification.id}`);
     return { notificationId: notification.id, status: notification.status };
   }
 
   async sendBulk(dto: BulkSendDto) {
     const bulkId = randomUUID();
-    const jobs: Promise<void>[] = [];
 
     for (const userId of dto.userIds) {
       const notification = await this.createNotification(
@@ -136,63 +111,35 @@ export class NotificationsService {
       if (dto.channel === NotificationChannel.EMAIL) {
         const user = await this.userRepo.findOne({ where: { id: userId } });
         if (user?.email) {
-          jobs.push(
-            this.queue
-              .add(
-                QUEUE_JOBS.SEND_EMAIL,
-                {
-                  notificationId: notification.id,
-                  to: user.email,
-                  subject: dto.subject ?? 'Notification',
-                  html: dto.message,
-                },
-                JOB_OPTIONS,
-              )
-              .then(),
-          );
+          this.sender.sendEmail(notification.id, {
+            to: user.email,
+            subject: dto.subject ?? 'Notification',
+            html: dto.message,
+          });
         }
       } else if (dto.channel === NotificationChannel.SMS) {
         const user = await this.userRepo.findOne({ where: { id: userId } });
         if (user?.phone) {
-          jobs.push(
-            this.queue
-              .add(
-                QUEUE_JOBS.SEND_SMS,
-                {
-                  notificationId: notification.id,
-                  to: user.phone,
-                  body: dto.message,
-                },
-                JOB_OPTIONS,
-              )
-              .then(),
-          );
+          this.sender.sendSms(notification.id, {
+            to: user.phone,
+            body: dto.message,
+          });
         }
       } else if (dto.channel === NotificationChannel.PUSH) {
         const user = await this.userRepo.findOne({ where: { id: userId } });
         if (user?.fcmToken) {
-          jobs.push(
-            this.queue
-              .add(
-                QUEUE_JOBS.SEND_PUSH,
-                {
-                  notificationId: notification.id,
-                  token: user.fcmToken,
-                  title: dto.subject ?? 'Notification',
-                  body: dto.message,
-                  data: dto.data,
-                },
-                JOB_OPTIONS,
-              )
-              .then(),
-          );
+          this.sender.sendPush(notification.id, {
+            token: user.fcmToken,
+            title: dto.subject ?? 'Notification',
+            body: dto.message,
+            data: dto.data,
+          });
         }
       }
     }
 
-    await Promise.all(jobs);
     this.logger.log(
-      `Bulk job created: bulkId=${bulkId}, count=${dto.userIds.length}`,
+      `Bulk created: bulkId=${bulkId}, count=${dto.userIds.length}`,
     );
     return { bulkId, queued: dto.userIds.length };
   }
@@ -204,10 +151,13 @@ export class NotificationsService {
     if (!notifications.length)
       throw new NotFoundException(`Bulk ${bulkId} not found`);
 
-    const counts = notifications.reduce((acc, n) => {
-      acc[n.status] = (acc[n.status] ?? 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+    const counts = notifications.reduce(
+      (acc, n) => {
+        acc[n.status] = (acc[n.status] ?? 0) + 1;
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
 
     return {
       bulkId,
@@ -220,7 +170,9 @@ export class NotificationsService {
   }
 
   async findById(id: string) {
-    const notification = await this.notificationRepo.findOne({ where: { id } });
+    const notification = await this.notificationRepo.findOne({
+      where: { id },
+    });
     if (!notification)
       throw new NotFoundException(`Notification ${id} not found`);
     return notification;

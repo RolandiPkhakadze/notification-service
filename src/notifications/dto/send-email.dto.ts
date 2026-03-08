@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class SendEmailDto {
   @ApiProperty({ example: 'user@example.com' })
@@ -23,6 +23,6 @@ export class SendEmailDto {
 
   @ApiPropertyOptional({ description: 'Optional userId to track notification' })
   @IsOptional()
-  @IsString()
+  @IsUUID()
   userId?: string;
 }

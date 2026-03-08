@@ -57,6 +57,22 @@ export class PushService implements OnModuleInit {
     return { providerMessageId: messageId };
   }
 
+  isConfigured(): boolean {
+    return !!this.app;
+  }
+
+  getProjectId(): string | null {
+    return this.config.get<string>('FIREBASE_PROJECT_ID') ?? null;
+  }
+
+  async sendDryRun(topic: string): Promise<string> {
+    if (!this.app) throw new Error('Firebase not configured');
+    return this.app.messaging().send(
+      { topic, notification: { title: 'dry-run', body: 'dry-run' } },
+      true, // dryRun — validates the message without actually sending
+    );
+  }
+
   async sendToTopic(dto: SendPushDto & { topic: string }): Promise<PushResult> {
     if (!this.app) throw new Error('Firebase not configured');
     const messageId = await this.app.messaging().send({

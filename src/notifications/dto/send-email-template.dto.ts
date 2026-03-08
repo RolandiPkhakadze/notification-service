@@ -4,7 +4,7 @@ import {
   IsNotEmpty,
   IsObject,
   IsOptional,
-  IsString,
+  IsString, IsUUID,
 } from 'class-validator';
 
 export class SendEmailTemplateDto {
@@ -24,6 +24,6 @@ export class SendEmailTemplateDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsString()
+  @IsUUID()
   userId?: string;
 }

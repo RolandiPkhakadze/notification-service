@@ -6,13 +6,14 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
 } from 'class-validator';
 import { NotificationChannel } from '../../database/entities/notification.entity';
 
 export class BulkSendDto {
   @ApiProperty({ example: ['uuid1', 'uuid2'] })
   @IsArray()
-  @IsString({ each: true })
+  @IsUUID(undefined, { each: true })
   userIds: string[];
 
   @ApiProperty({ enum: NotificationChannel })
