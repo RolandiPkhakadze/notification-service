@@ -9,10 +9,7 @@ export class HealthController {
   private firebaseCache: { result: { status: string }; checkedAt: number } | null = null;
   private readonly CACHE_TTL = 60_000; // 1 minute
 
-  constructor(
-    private readonly dataSource: DataSource,
-    private readonly pushService: PushService,
-  ) {}
+  constructor(private readonly dataSource: DataSource, private readonly pushService: PushService) {}
 
   @Get()
   @ApiOperation({ summary: 'Service health check' })
@@ -21,8 +18,7 @@ export class HealthController {
     const firebase = await this.checkFirebase();
 
     return {
-      status:
-        db.status === 'up' && firebase.status !== 'error' ? 'ok' : 'degraded',
+      status: db.status === 'up' && firebase.status !== 'error' ? 'ok' : 'degraded',
       database: db,
       firebase,
     };
@@ -42,10 +38,7 @@ export class HealthController {
       return { status: 'not_configured' };
     }
 
-    if (
-      this.firebaseCache &&
-      Date.now() - this.firebaseCache.checkedAt < this.CACHE_TTL
-    ) {
+    if (this.firebaseCache && Date.now() - this.firebaseCache.checkedAt < this.CACHE_TTL) {
       return this.firebaseCache.result;
     }
 

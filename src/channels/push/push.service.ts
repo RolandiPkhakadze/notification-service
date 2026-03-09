@@ -24,9 +24,7 @@ export class PushService implements OnModuleInit {
   onModuleInit() {
     const privateKey = this.config.get<string>('FIREBASE_PRIVATE_KEY');
     if (!privateKey || privateKey.includes('replace_me')) {
-      this.logger.warn(
-        'Firebase credentials not configured — push notifications disabled',
-      );
+      this.logger.warn('Firebase credentials not configured — push notifications disabled');
       return;
     }
 
@@ -43,9 +41,7 @@ export class PushService implements OnModuleInit {
     }
   }
 
-  async sendToDevice(
-    dto: SendPushDto & { token: string },
-  ): Promise<PushResult> {
+  async sendToDevice(dto: SendPushDto & { token: string }): Promise<PushResult> {
     if (!this.app) throw new Error('Firebase not configured');
     const messageId = await this.app.messaging().send({
       token: dto.token,

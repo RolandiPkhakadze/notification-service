@@ -1,33 +1,30 @@
 # Notification Service
 
-A production-grade multi-channel notification REST API built with NestJS. Sends emails, SMS, and push notifications through a single unified API, using BullMQ + Redis for queue-based processing, PostgreSQL for persistence, and webhook delivery tracking.
+A multi-channel notification REST API built with NestJS. Sends emails, SMS, and push notifications through a single unified API with automatic retries, status tracking, and template support.
 
 ## Architecture
 
 ```
 HTTP Request
-     │
-     ▼
+     |
+     v
 NestJS Controller
-     │
-     ▼
-NotificationsService ──► Save to DB (status: pending)
-     │
-     ▼
-BullMQ Queue (Redis)
-     │
-     ▼
-NotificationProcessor
-     │
-     ├──► EmailService (SendGrid)
-     ├──► SmsService (Twilio)
-     └──► PushService (Firebase FCM)
-               │
-               ▼
-        Update DB (status: sent / failed)
-               │
-               ▼
-        SendGrid Webhook ──► Update DB (status: delivered / failed)
+     |
+     v
+NotificationsService --> Save to DB (status: pending)
+     |
+     v
+NotificationSender (async, fire-and-forget)
+     |
+     |-- EmailService (SendGrid)
+     |-- SmsService (Twilio)
+     +-- PushService (Firebase FCM)
+              |
+              v
+       Update DB (status: sent / failed)
+              |
+              v
+       SendGrid Webhook --> Update DB (status: delivered / failed)
 ```
 
 ## Tech Stack
@@ -37,47 +34,12 @@ NotificationProcessor
 | Framework | NestJS 11 (Node.js 20) |
 | Language | TypeScript |
 | Database | PostgreSQL + TypeORM |
-| Queue | BullMQ + Redis |
 | Email | SendGrid |
 | SMS | Twilio |
 | Push | Firebase Admin SDK (FCM) |
 | Docs | Swagger / OpenAPI |
 | Containers | Docker + Docker Compose |
-
-## Project Structure
-
-```
-src/
-├── notifications/          # Core module — all notification endpoints
-│   ├── dto/                # Request DTOs with validation
-│   ├── notifications.controller.ts
-│   └── notifications.service.ts
-├── channels/
-│   ├── email/              # SendGrid integration
-│   ├── sms/                # Twilio integration
-│   └── push/               # Firebase FCM integration
-├── queues/
-│   ├── notification.queue.ts       # Job constants and payload types
-│   └── notification.processor.ts  # BullMQ worker (retries + backoff)
-├── templates/              # Notification template CRUD + rendering
-├── webhooks/               # SendGrid event webhooks + signature verification
-├── database/
-│   └── entities/           # TypeORM entities
-└── common/
-    └── filters/            # Global exception filter
-```
-
-## Database Schema
-
-**users** — `id`, `email`, `phone`, `fcmToken`, `createdAt`
-
-**notifications** — `id`, `userId`, `channel`, `status`, `provider`, `providerMessageId`, `bulkId`, `errorMessage`, `metadata`, `createdAt`, `updatedAt`
-
-**notification_templates** — `id`, `name`, `channel`, `subject`, `body`, `createdAt`
-
-**Channels:** `email` | `sms` | `push`
-
-**Statuses:** `pending` → `sent` → `delivered` / `failed`
+| Deployment | AWS ECS Fargate + RDS + CloudFront |
 
 ## Local Setup
 
@@ -101,10 +63,10 @@ cp .env.example .env
 
 Fill in your credentials (see [Environment Variables](#environment-variables) below).
 
-### 3. Start infrastructure
+### 3. Start PostgreSQL
 
 ```bash
-docker compose up postgres redis -d
+docker compose up postgres -d
 ```
 
 ### 4. Start the app
@@ -127,16 +89,16 @@ docker compose up --build
 | Variable | Description |
 |----------|-------------|
 | `PORT` | App port (default: 3000) |
+| `CORS_ORIGIN` | Comma-separated allowed origins (default: `*`) |
 | `DB_HOST` | PostgreSQL host |
 | `DB_PORT` | PostgreSQL port (default: 5432) |
 | `DB_USER` | PostgreSQL username |
 | `DB_PASSWORD` | PostgreSQL password |
 | `DB_NAME` | PostgreSQL database name |
-| `REDIS_HOST` | Redis host |
-| `REDIS_PORT` | Redis port (default: 6379) |
+| `DB_SSL` | Enable SSL for database (set `true` for AWS RDS) |
 | `SENDGRID_API_KEY` | SendGrid API key |
 | `SENDGRID_FROM_EMAIL` | Verified sender email |
-| `SENDGRID_WEBHOOK_SECRET` | Webhook signing secret for signature verification |
+| `SENDGRID_WEBHOOK_SECRET` | Webhook signing secret |
 | `TWILIO_ACCOUNT_SID` | Twilio Account SID |
 | `TWILIO_AUTH_TOKEN` | Twilio Auth Token |
 | `TWILIO_PHONE_NUMBER` | Twilio phone number |
@@ -148,36 +110,9 @@ docker compose up --build
 
 ### Notifications
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/notifications/email` | Send a single email |
-| `POST` | `/notifications/email/template` | Send email using a saved template |
-| `POST` | `/notifications/sms` | Send a single SMS |
-| `POST` | `/notifications/push` | Send a push notification |
-| `POST` | `/notifications/bulk` | Send to multiple users at once |
-| `GET` | `/notifications/bulk/:bulkId/status` | Get bulk send progress |
-| `GET` | `/notifications/:id` | Get notification status |
-| `GET` | `/notifications/user/:userId` | Get user notification history |
+#### `POST /notifications/email` — Send a single email
 
-### Templates
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/templates` | Create a notification template |
-| `GET` | `/templates` | List all templates |
-| `GET` | `/templates/:id` | Get template by ID |
-
-### Webhooks
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/webhooks/sendgrid` | Receive SendGrid delivery events |
-
-## Example Requests
-
-**Send email**
 ```json
-POST /notifications/email
 {
   "to": "user@example.com",
   "subject": "Welcome!",
@@ -186,28 +121,87 @@ POST /notifications/email
 }
 ```
 
-**Send SMS**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `to` | string (email) | Yes | Recipient email address |
+| `subject` | string | Yes | Email subject line |
+| `text` | string | No | Plain text body |
+| `html` | string | No | HTML body |
+| `userId` | UUID | No | Associate with a user for tracking |
+
+---
+
+#### `POST /notifications/email/template` — Send email using a saved template
+
 ```json
-POST /notifications/sms
 {
-  "to": "+14155552671",
-  "body": "Your verification code is 123456"
+  "to": "user@example.com",
+  "templateName": "welcome_email",
+  "variables": { "name": "John" },
+  "userId": "optional-user-uuid"
 }
 ```
 
-**Send push notification**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `to` | string (email) | Yes | Recipient email address |
+| `templateName` | string | Yes | Name of a saved template |
+| `variables` | object | No | Key-value pairs to replace `{{placeholders}}` in the template |
+| `userId` | UUID | No | Associate with a user for tracking |
+
+---
+
+#### `POST /notifications/sms` — Send a single SMS
+
+> **Note:** Twilio trial accounts can only send SMS to verified phone numbers. The screenshots below demonstrate this endpoint working with a verified number.
+
 ```json
-POST /notifications/push
+{
+  "to": "+14155552671",
+  "body": "Your verification code is 123456",
+  "userId": "optional-user-uuid"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `to` | string | Yes | Phone number in E.164 format (e.g. `+1415...`) |
+| `body` | string | Yes | SMS message content |
+| `userId` | UUID | No | Associate with a user for tracking |
+
+<!-- ![SMS endpoint screenshot](screenshots/sms-send.png) -->
+
+---
+
+#### `POST /notifications/push` — Send a push notification
+
+Either `token` (single device) or `topic` (broadcast) is required.
+
+```json
 {
   "token": "device-fcm-token",
   "title": "New message",
-  "body": "You have a new message from John"
+  "body": "You have a new message from John",
+  "data": { "orderId": "123" }
 }
 ```
 
-**Bulk send**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `token` | string | Conditional | FCM device token (required if no `topic`) |
+| `topic` | string | Conditional | FCM topic name (required if no `token`) |
+| `title` | string | Yes | Notification title |
+| `body` | string | Yes | Notification body |
+| `data` | object | No | Custom key-value payload |
+| `userId` | UUID | No | Associate with a user for tracking |
+
+The Swagger UI at `/api/docs` includes a built-in **Push Notification Tester** that lets you obtain an FCM token and receive push notifications directly in the browser (requires HTTPS).
+
+---
+
+#### `POST /notifications/bulk` — Send notifications to multiple users
+
 ```json
-POST /notifications/bulk
 {
   "userIds": ["uuid1", "uuid2", "uuid3"],
   "channel": "email",
@@ -216,9 +210,46 @@ POST /notifications/bulk
 }
 ```
 
-**Create template**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `userIds` | UUID[] | Yes | Array of user IDs to notify |
+| `channel` | enum | Yes | `email`, `sms`, or `push` |
+| `message` | string | Yes | Notification content |
+| `subject` | string | No | Subject line (used for email/push) |
+| `data` | object | No | Custom data payload (push only) |
+
+---
+
+#### `GET /notifications/:id` — Get notification status
+
+Returns the current status and delivery details of a single notification.
+
+#### `GET /notifications/user/:userId` — Get user's notification history
+
+Returns all notifications for a user, sorted by newest first.
+
+#### `GET /notifications/bulk/:bulkId/status` — Get bulk send progress
+
+Returns a summary with counts per status:
+
 ```json
-POST /templates
+{
+  "bulkId": "...",
+  "total": 3,
+  "sent": 2,
+  "delivered": 0,
+  "failed": 1,
+  "pending": 0
+}
+```
+
+---
+
+### Templates
+
+#### `POST /templates` — Create a notification template
+
+```json
 {
   "name": "welcome_email",
   "channel": "email",
@@ -227,69 +258,86 @@ POST /templates
 }
 ```
 
-**Send with template**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Unique template identifier |
+| `channel` | enum | Yes | `email`, `sms`, or `push` |
+| `subject` | string | No | Template subject (supports `{{variables}}`) |
+| `body` | string | Yes | Template body (supports `{{variables}}`) |
+
+#### `GET /templates` — List all templates
+
+#### `GET /templates/:id` — Get template by ID
+
+---
+
+### Webhooks
+
+#### `POST /webhooks/sendgrid` — SendGrid delivery events
+
+Receives delivery status updates from SendGrid. Requires valid webhook signature headers. Updates notification status automatically:
+
+| SendGrid Event | Notification Status |
+|----------------|-------------------|
+| `delivered` | `delivered` |
+| `bounce` / `blocked` / `dropped` | `failed` |
+| `open` / `click` | metadata updated |
+
+---
+
+### Health
+
+#### `GET /health` — Service health check
+
 ```json
-POST /notifications/email/template
 {
-  "to": "user@example.com",
-  "templateName": "welcome_email",
-  "variables": { "name": "John" }
+  "status": "ok",
+  "database": { "status": "up" },
+  "firebase": { "status": "up", "projectId": "..." }
 }
 ```
 
-## Queue & Retry Logic
+Returns `"ok"` when all services are healthy, `"degraded"` if any check fails. Firebase status is cached for 60 seconds.
 
-Every notification request is:
+## Retry Logic
+
+Every notification is processed asynchronously with automatic retries:
+
 1. Saved to the database with status `pending`
-2. Added to a BullMQ queue
-3. Processed asynchronously by the worker
-
-Failed jobs are retried automatically with exponential backoff:
+2. Sent in the background (fire-and-forget)
+3. On failure, retried with exponential backoff
 
 | Attempt | Delay |
 |---------|-------|
 | 1st retry | 1 second |
-| 2nd retry | 5 seconds |
-| 3rd retry | 30 seconds |
+| 2nd retry | 2 seconds |
+| 3rd retry | 4 seconds |
 
-After 3 failures the notification is permanently marked `failed` in the database.
+After 3 failures the notification is marked `failed` in the database.
 
-## Webhook Delivery Tracking
+## Database Schema
 
-SendGrid webhooks update notification status automatically:
+**users** — `id`, `email`, `phone`, `fcmToken`, `createdAt`
 
-| Event | Status |
-|-------|--------|
-| `delivered` | `delivered` |
-| `bounce` / `blocked` / `dropped` | `failed` |
-| `open` | metadata updated |
-| `click` | metadata updated |
+**notifications** — `id`, `userId`, `channel`, `status`, `provider`, `providerMessageId`, `bulkId`, `errorMessage`, `metadata`, `createdAt`, `updatedAt`
 
-Each webhook request is verified against the SendGrid signing secret before processing.
+**notification_templates** — `id`, `name`, `channel`, `subject`, `body`, `createdAt`
 
-## Testing
-
-**SendGrid** — enable sandbox mode in your SendGrid account (API calls succeed without sending real emails).
-
-**Twilio** — use [test credentials](https://www.twilio.com/docs/iam/test-credentials) with magic phone numbers.
-
-**Firebase FCM** — use a real device token or the Firebase emulator.
-
-Use Swagger at `/api/docs` to test all endpoints interactively.
+**Statuses:** `pending` -> `sent` -> `delivered` / `failed`
 
 ## Deployment (AWS)
 
-Recommended stack:
+This service is deployed on:
 
-- **ECS Fargate** — run the app container
+- **ECS Fargate** — runs the app container
 - **RDS PostgreSQL** — managed database
-- **ElastiCache Redis** — managed Redis for BullMQ
 - **ECR** — Docker image registry
-- **S3** — static assets if needed
+- **CloudFront** — HTTPS termination + CDN
 
 Steps:
-1. Build and push image to ECR
-2. Create ECS task definition with all env vars
-3. Deploy service on Fargate
-4. Point ECS to RDS and ElastiCache endpoints
-5. Set `NODE_ENV=production` (disables TypeORM `synchronize` — run migrations instead)
+1. Build and push Docker image to ECR
+2. Create ECS task definition with environment variables
+3. Deploy service on Fargate with an ALB
+4. Point task definition to your RDS endpoint
+5. Create a CloudFront distribution in front of the ALB for HTTPS
+6. Set `NODE_ENV=production` (disables TypeORM `synchronize`)

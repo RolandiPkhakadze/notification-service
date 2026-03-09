@@ -1,11 +1,4 @@
-import {
-  ArgumentsHost,
-  Catch,
-  ConflictException,
-  ExceptionFilter,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { ArgumentsHost, Catch, ConflictException, ExceptionFilter, Logger, NotFoundException } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { QueryFailedError } from 'typeorm';
 
@@ -31,10 +24,7 @@ export class DbExceptionFilter implements ExceptionFilter {
         mapped = new ConflictException('Missing required field');
         break;
       default:
-        this.logger.error(
-          `${request.method} ${request.url} → DB error [${exception.code}]`,
-          exception.stack,
-        );
+        this.logger.error(`${request.method} ${request.url} → DB error [${exception.code}]`, exception.stack);
         response.status(500).json({
           statusCode: 500,
           timestamp: new Date().toISOString(),
@@ -45,9 +35,7 @@ export class DbExceptionFilter implements ExceptionFilter {
     }
 
     const status = mapped.getStatus();
-    this.logger.warn(
-      `${request.method} ${request.url} → ${status}: ${mapped.message}`,
-    );
+    this.logger.warn(`${request.method} ${request.url} → ${status}: ${mapped.message}`);
 
     response.status(status).json({
       statusCode: status,

@@ -71,6 +71,12 @@ async function bootstrap() {
       const btn = document.getElementById('push-enable-btn');
 
       try {
+        if (!('serviceWorker' in navigator)) {
+          statusEl.textContent = 'Push requires HTTPS or localhost. Service workers are not available on plain HTTP.';
+          statusEl.style.color = '#f93e3e';
+          return;
+        }
+
         statusEl.textContent = 'Loading Firebase...';
 
         const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
@@ -87,10 +93,11 @@ async function bootstrap() {
           return;
         }
 
-        const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+        await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+        const readyReg = await navigator.serviceWorker.ready;
         statusEl.textContent = 'Getting token...';
 
-        const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: swReg });
+        const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: readyReg });
 
         btn.style.display = 'none';
         statusEl.style.color = '#49cc90';

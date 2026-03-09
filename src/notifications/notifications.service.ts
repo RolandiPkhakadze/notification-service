@@ -3,11 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
 import { TemplatesService } from '../templates/templates.service';
-import {
-  Notification,
-  NotificationChannel,
-  NotificationStatus,
-} from '../database/entities/notification.entity';
+import { Notification, NotificationChannel, NotificationStatus } from '../database/entities/notification.entity';
 import { User } from '../database/entities/user.entity';
 import { NotificationSender } from './notification-sender.service';
 import { BulkSendDto } from './dto/bulk-send.dto';
@@ -30,10 +26,7 @@ export class NotificationsService {
   ) {}
 
   async sendEmail(dto: SendEmailDto) {
-    const notification = await this.createNotification(
-      NotificationChannel.EMAIL,
-      dto.userId,
-    );
+    const notification = await this.createNotification(NotificationChannel.EMAIL, dto.userId);
 
     this.sender.sendEmail(notification.id, {
       to: dto.to,
@@ -42,18 +35,13 @@ export class NotificationsService {
       html: dto.html,
     });
 
-    this.logger.log(
-      `Email queued for ${dto.to}, notificationId=${notification.id}`,
-    );
+    this.logger.log(`Email queued for ${dto.to}, notificationId=${notification.id}`);
     return { notificationId: notification.id, status: notification.status };
   }
 
   async sendEmailWithTemplate(dto: SendEmailTemplateDto) {
     const template = await this.templatesService.findByName(dto.templateName);
-    const body = this.templatesService.renderBody(
-      template.body,
-      dto.variables ?? {},
-    );
+    const body = this.templatesService.renderBody(template.body, dto.variables ?? {});
     const subject = template.subject
       ? this.templatesService.renderBody(template.subject, dto.variables ?? {})
       : dto.templateName;
@@ -67,24 +55,16 @@ export class NotificationsService {
   }
 
   async sendSms(dto: SendSmsDto) {
-    const notification = await this.createNotification(
-      NotificationChannel.SMS,
-      dto.userId,
-    );
+    const notification = await this.createNotification(NotificationChannel.SMS, dto.userId);
 
     this.sender.sendSms(notification.id, { to: dto.to, body: dto.body });
 
-    this.logger.log(
-      `SMS queued for ${dto.to}, notificationId=${notification.id}`,
-    );
+    this.logger.log(`SMS queued for ${dto.to}, notificationId=${notification.id}`);
     return { notificationId: notification.id, status: notification.status };
   }
 
   async sendPush(dto: SendPushDto) {
-    const notification = await this.createNotification(
-      NotificationChannel.PUSH,
-      dto.userId,
-    );
+    const notification = await this.createNotification(NotificationChannel.PUSH, dto.userId);
 
     this.sender.sendPush(notification.id, {
       token: dto.token,
@@ -102,11 +82,7 @@ export class NotificationsService {
     const bulkId = randomUUID();
 
     for (const userId of dto.userIds) {
-      const notification = await this.createNotification(
-        dto.channel,
-        userId,
-        bulkId,
-      );
+      const notification = await this.createNotification(dto.channel, userId, bulkId);
 
       if (dto.channel === NotificationChannel.EMAIL) {
         const user = await this.userRepo.findOne({ where: { id: userId } });
@@ -138,9 +114,7 @@ export class NotificationsService {
       }
     }
 
-    this.logger.log(
-      `Bulk created: bulkId=${bulkId}, count=${dto.userIds.length}`,
-    );
+    this.logger.log(`Bulk created: bulkId=${bulkId}, count=${dto.userIds.length}`);
     return { bulkId, queued: dto.userIds.length };
   }
 
@@ -148,16 +122,12 @@ export class NotificationsService {
     const notifications = await this.notificationRepo.find({
       where: { bulkId },
     });
-    if (!notifications.length)
-      throw new NotFoundException(`Bulk ${bulkId} not found`);
+    if (!notifications.length) throw new NotFoundException(`Bulk ${bulkId} not found`);
 
-    const counts = notifications.reduce(
-      (acc, n) => {
-        acc[n.status] = (acc[n.status] ?? 0) + 1;
-        return acc;
-      },
-      {} as Record<string, number>,
-    );
+    const counts = notifications.reduce((acc, n) => {
+      acc[n.status] = (acc[n.status] ?? 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
 
     return {
       bulkId,
@@ -173,8 +143,7 @@ export class NotificationsService {
     const notification = await this.notificationRepo.findOne({
       where: { id },
     });
-    if (!notification)
-      throw new NotFoundException(`Notification ${id} not found`);
+    if (!notification) throw new NotFoundException(`Notification ${id} not found`);
     return notification;
   }
 

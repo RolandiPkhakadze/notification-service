@@ -18,10 +18,7 @@ export class SmsService {
   private readonly from: string;
 
   constructor(private readonly config: ConfigService) {
-    this.client = new Twilio(
-      this.config.getOrThrow('TWILIO_ACCOUNT_SID'),
-      this.config.getOrThrow('TWILIO_AUTH_TOKEN'),
-    );
+    this.client = new Twilio(this.config.getOrThrow('TWILIO_ACCOUNT_SID'), this.config.getOrThrow('TWILIO_AUTH_TOKEN'));
     this.from = this.config.getOrThrow('TWILIO_PHONE_NUMBER');
   }
 

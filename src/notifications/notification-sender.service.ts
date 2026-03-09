@@ -4,10 +4,7 @@ import { Repository } from 'typeorm';
 import { EmailService } from '../channels/email/email.service';
 import { PushService } from '../channels/push/push.service';
 import { SmsService } from '../channels/sms/sms.service';
-import {
-  Notification,
-  NotificationStatus,
-} from '../database/entities/notification.entity';
+import { Notification, NotificationStatus } from '../database/entities/notification.entity';
 
 const MAX_ATTEMPTS = 3;
 const BASE_DELAY_MS = 1000;
@@ -25,10 +22,7 @@ export class NotificationSender {
   ) {}
 
   /** Fire-and-forget: sends email in background with retries. */
-  sendEmail(
-    notificationId: string,
-    payload: { to: string; subject: string; text?: string; html?: string },
-  ): void {
+  sendEmail(notificationId: string, payload: { to: string; subject: string; text?: string; html?: string }): void {
     this.executeWithRetry(notificationId, async () => {
       const result = await this.emailService.send(payload);
       await this.markSent(notificationId, result.providerMessageId, 'sendgrid');
@@ -36,10 +30,7 @@ export class NotificationSender {
   }
 
   /** Fire-and-forget: sends SMS in background with retries. */
-  sendSms(
-    notificationId: string,
-    payload: { to: string; body: string },
-  ): void {
+  sendSms(notificationId: string, payload: { to: string; body: string }): void {
     this.executeWithRetry(notificationId, async () => {
       const result = await this.smsService.send(payload);
       await this.markSent(notificationId, result.providerMessageId, 'twilio');
@@ -82,20 +73,13 @@ export class NotificationSender {
     });
   }
 
-  private executeWithRetry(
-    notificationId: string,
-    fn: () => Promise<void>,
-  ): void {
+  private executeWithRetry(notificationId: string, fn: () => Promise<void>): void {
     this.attempt(notificationId, fn, 1).catch(() => {
       // already handled inside attempt()
     });
   }
 
-  private async attempt(
-    notificationId: string,
-    fn: () => Promise<void>,
-    attempt: number,
-  ): Promise<void> {
+  private async attempt(notificationId: string, fn: () => Promise<void>, attempt: number): Promise<void> {
     try {
       await fn();
     } catch (err) {
@@ -110,18 +94,12 @@ export class NotificationSender {
         return this.attempt(notificationId, fn, attempt + 1);
       }
 
-      this.logger.error(
-        `Notification ${notificationId} failed after ${MAX_ATTEMPTS} attempts: ${message}`,
-      );
+      this.logger.error(`Notification ${notificationId} failed after ${MAX_ATTEMPTS} attempts: ${message}`);
       await this.markFailed(notificationId, message);
     }
   }
 
-  private async markSent(
-    notificationId: string,
-    providerMessageId: string,
-    provider: string,
-  ): Promise<void> {
+  private async markSent(notificationId: string, providerMessageId: string, provider: string): Promise<void> {
     await this.notificationRepo.update(notificationId, {
       status: NotificationStatus.SENT,
       providerMessageId,
@@ -130,10 +108,7 @@ export class NotificationSender {
     this.logger.log(`Notification ${notificationId} sent via ${provider}`);
   }
 
-  private async markFailed(
-    notificationId: string,
-    errorMessage: string,
-  ): Promise<void> {
+  private async markFailed(notificationId: string, errorMessage: string): Promise<void> {
     await this.notificationRepo.update(notificationId, {
       status: NotificationStatus.FAILED,
       errorMessage,

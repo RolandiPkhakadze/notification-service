@@ -3,10 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as crypto from 'crypto';
 import { Repository } from 'typeorm';
-import {
-  Notification,
-  NotificationStatus,
-} from '../database/entities/notification.entity';
+import { Notification, NotificationStatus } from '../database/entities/notification.entity';
 
 interface SendGridEvent {
   event: string;
@@ -30,18 +27,13 @@ export class WebhooksService {
     const secret = this.config.get<string>('SENDGRID_WEBHOOK_SECRET');
     if (!secret) {
       if (this.config.get('NODE_ENV') === 'production') {
-        throw new UnauthorizedException(
-          'Webhook signature verification not configured',
-        );
+        throw new UnauthorizedException('Webhook signature verification not configured');
       }
       return; // skip in dev if not configured
     }
 
     const timestampedPayload = timestamp + payload.toString();
-    const expected = crypto
-      .createHmac('sha256', secret)
-      .update(timestampedPayload)
-      .digest('base64');
+    const expected = crypto.createHmac('sha256', secret).update(timestampedPayload).digest('base64');
 
     if (expected !== signature) {
       throw new UnauthorizedException('Invalid webhook signature');
@@ -57,19 +49,12 @@ export class WebhooksService {
 
       switch (event.event) {
         case 'delivered':
-          await this.updateByProviderMessageId(
-            messageId,
-            NotificationStatus.DELIVERED,
-          );
+          await this.updateByProviderMessageId(messageId, NotificationStatus.DELIVERED);
           break;
         case 'bounce':
         case 'blocked':
         case 'dropped':
-          await this.updateByProviderMessageId(
-            messageId,
-            NotificationStatus.FAILED,
-            event.reason,
-          );
+          await this.updateByProviderMessageId(messageId, NotificationStatus.FAILED, event.reason);
           break;
         case 'open':
           await this.updateMetadata(messageId, {
@@ -92,16 +77,10 @@ export class WebhooksService {
     status: NotificationStatus,
     errorMessage?: string,
   ): Promise<void> {
-    await this.notificationRepo.update(
-      { providerMessageId },
-      { status, ...(errorMessage && { errorMessage }) },
-    );
+    await this.notificationRepo.update({ providerMessageId }, { status, ...(errorMessage && { errorMessage }) });
   }
 
-  private async updateMetadata(
-    providerMessageId: string,
-    extra: Record<string, unknown>,
-  ): Promise<void> {
+  private async updateMetadata(providerMessageId: string, extra: Record<string, unknown>): Promise<void> {
     const notification = await this.notificationRepo.findOne({
       where: { providerMessageId },
     });
